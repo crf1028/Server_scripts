@@ -4,20 +4,33 @@ if PLATFORM == "pc":
     BASE_ROOT = "C:\\Users\\rongfeng\\Dropbox\\"
     SITE_ROOT = BASE_ROOT + "mysite_on_pi_main\\"
     SCRIPT_ROOT = BASE_ROOT + "Python Projects\\Server_scripts\\"
-    DATA_DIR_ROOT = SITE_ROOT + "Data\\"
-    STATIC_DIR_ROOT = SITE_ROOT + "static\\"
+    DATA_DIR = SITE_ROOT + "Data\\"
+    STATIC_DIR = SITE_ROOT + "static\\"
+    DOWNLOAD_DIR = SCRIPT_ROOT+"OWDown\\"
 elif PLATFORM == "pi":
     BASE_ROOT = '/home/rc/'
     SITE_ROOT = BASE_ROOT + 'PySites/ourcase/'
     SCRIPT_ROOT = BASE_ROOT + 'Documents/PyScripts/'
-    DATA_DIR_ROOT = SITE_ROOT + "Data/"
-    STATIC_DIR_ROOT = SITE_ROOT + "static/"
+    DATA_DIR = SITE_ROOT + "Data/"
+    STATIC_DIR = SITE_ROOT + "static/"
+    DOWNLOAD_DIR = BASE_ROOT + "Downloads/"
 
 
 def logging_python_quest(msg):
-    import datetime
-    with open(DATA_DIR_ROOT+'python_quest_log.txt', 'a') as pql:
-        pql.write(str(datetime.datetime.now().date())+'\t'+msg+'\n')
+    if PLATFORM == "pc":
+        print msg
+    elif PLATFORM == "pi":
+        import datetime
+        with open(DATA_DIR+ 'python_quest_log.txt', 'a') as pql:
+            pql.write(str(datetime.datetime.now().date())+'\t'+msg+'\n')
+
+
+def file_downloader(url, path2f, file_name):
+    import urllib2
+
+    f = urllib2.urlopen(url)
+    with open(path2f+file_name, 'wb') as code:
+        code.write(f.read())
 
 
 def ensure(mtd, n):
@@ -42,10 +55,10 @@ def get_bing_pic_url():
 
         pic_url = 'http://www.bing.com' + json.load(urlopen(bing_pic_json_url))['images'][0]['urlbase'] + '_1920x1080.jpg'
 
-        k = open(STATIC_DIR_ROOT+'home_page.css', 'r')
+        k = open(STATIC_DIR + 'home_page.css', 'r')
         t = k.read()
         z = re.sub(r'(http).*(jpg)', pic_url, t)
-        k = open(STATIC_DIR_ROOT+'home_page.css', 'w')
+        k = open(STATIC_DIR + 'home_page.css', 'w')
         k.write(z)
         k.close()
 
@@ -75,17 +88,101 @@ def get_smm_price():
         # print data2save
 
         try:
-            k = open(DATA_DIR_ROOT+'smm_price', 'r')
+            k = open(DATA_DIR + 'smm_price', 'r')
             old_data = json.load(k)
         except ValueError:
             old_data = {}
         old_data.update(data2save)
-        k = open(DATA_DIR_ROOT+'smm_price', 'w')
+        k = open(DATA_DIR + 'smm_price', 'w')
         json.dump(old_data, k)
         k.close()
-        with open(DATA_DIR_ROOT+'smm_price_daily', 'w') as z:
+        with open(DATA_DIR + 'smm_price_daily', 'w') as z:
             json.dump(data2save, z)
 
         logging_python_quest('smm price get')
     ensure(process, 0)
 
+
+def get_reddit_hot_info():
+    from bs4 import BeautifulSoup
+    from urllib2 import urlopen, Request
+    import re, json
+    from datetime import datetime
+
+    NOW = datetime.utcnow()
+    base_url = 'https://www.reddit.com/r/Overwatch/hot/?limit=100'
+
+    hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5)AppleWebKit 537.36(KHTML, like Gecko) Chrome",
+           "Accept": "text/html,application/xhtml+xml,application/xml;q = 0.9, image / webp, * / *;q = 0.8"}
+
+    soup = BeautifulSoup(urlopen(Request(base_url, headers=hdr)), "html.parser")
+
+    high_light = soup.findAll("span", {"class": "linkflairlabel", "title": lambda s: "Highlight" in s or "Humor" in s})
+    dict2store = {}
+    for item in high_light:
+        if item.parent.find("span", {"class": "domain"}).a.get_text() != "gfycat.com":
+            continue
+        try:
+            comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
+                "class": "first"}).a.get_text().split(' ')[0])
+        except ValueError:
+            comment_n = 0
+        if not comment_n:
+            continue
+        item_time = datetime.strptime(
+            item.parent.parent.find("p", {"class": "tagline "}).time['datetime'].replace("+00:00", ''),
+            "%Y-%m-%dT%H:%M:%S")
+        dif = (NOW - item_time).days * 24 + (NOW - item_time).seconds // 3600
+        if dif > 47:
+            continue
+        if not dif:
+            dif = 1
+        if dif * 4 < comment_n:
+            title = item.parent.a.get_text()
+            anchor_to_top = item.parent.parent.parent
+            gfycat_url = anchor_to_top["data-url"]
+            item_id = anchor_to_top["id"]
+            unique_code = re.findall(r'\.com/(.*)', gfycat_url)[0]
+            gfycat_mp4_url = "https://thumbs.gfycat.com/" + unique_code + "-mobile.mp4"
+            gfycat_img_url = "https://thumbs.gfycat.com/" + unique_code + "-mobile.jpg"
+            dict2store.update({item_id: [title, gfycat_mp4_url, gfycat_img_url]})
+
+    d = open(DATA_DIR + 'gfycat_down', 'r')
+    try:
+        old_dict = json.load(d)
+    except ValueError:
+        old_dict = {}
+    for item in dict2store.keys():
+        try:
+            old_dict[item]
+        except KeyError:
+            pass
+        else:
+            del dict2store[item]
+    old_dict.update(dict2store)
+    d = open(DATA_DIR + 'gfycat_down', 'w')
+    json.dump(old_dict, d)
+    logging_python_quest(str(dict2store)+' added')
+    d.close()
+
+
+def download_reddit_video():
+    import json
+    from time import sleep
+
+    d = open(DATA_DIR + 'gfycat_down', 'r')
+    old_dict = json.load(d)
+    for item in old_dict.keys():
+        if len(old_dict[item]) < 4:
+            file_name = old_dict[item][0].replace(' ', '_')
+            file_downloader(old_dict[item][1], DOWNLOAD_DIR, file_name + ".mp4")
+            sleep(5)
+            file_downloader(old_dict[item][2], DOWNLOAD_DIR, file_name + ".jpg")
+            sleep(5)
+            logging_python_quest(file_name + " downloaded")
+            old_dict[item].append("downloaded")
+            d = open(DATA_DIR + 'gfycat_down', 'w')
+            json.dump(old_dict, d)
+            d.close()
+    else:
+        logging_python_quest("gfycat downloaded")
