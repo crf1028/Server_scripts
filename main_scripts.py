@@ -106,7 +106,7 @@ def get_smm_price():
 def get_reddit_hot_info():
     from bs4 import BeautifulSoup
     from urllib2 import urlopen, Request
-    import re, json
+    import re, json, time
     from datetime import datetime
 
     NOW = datetime.utcnow()
@@ -145,7 +145,8 @@ def get_reddit_hot_info():
             unique_code = re.findall(r'\.com/(.*)', gfycat_url)[0]
             gfycat_mp4_url = "https://thumbs.gfycat.com/" + unique_code + "-mobile.mp4"
             gfycat_img_url = "https://thumbs.gfycat.com/" + unique_code + "-mobile.jpg"
-            dict2store.update({item_id: [title, gfycat_mp4_url, gfycat_img_url]})
+            time_added = int(time.time())
+            dict2store.update({item_id: [title, gfycat_mp4_url, gfycat_img_url, time_added]})
 
     d = open(DATA_DIR + 'gfycat_down', 'r')
     try:
@@ -169,20 +170,40 @@ def get_reddit_hot_info():
 def download_reddit_video():
     import json
     from time import sleep
+    from time import time as t
 
     d = open(DATA_DIR + 'gfycat_down', 'r')
     old_dict = json.load(d)
+    item_list2del = []
     for item in old_dict.keys():
-        if len(old_dict[item]) < 4:
+        if len(old_dict[item]) < 5:
             file_name = old_dict[item][0].replace(' ', '_')
             file_downloader(old_dict[item][1], DOWNLOAD_DIR, file_name + ".mp4")
             sleep(5)
             file_downloader(old_dict[item][2], DOWNLOAD_DIR, file_name + ".jpg")
             sleep(5)
+            text_f = open(DOWNLOAD_DIR+file_name+".txt", 'wb')
+            text_f.write("https://gfycat.com/"+old_dict[item][1].encode('utf-8')[26:-11])
+            text_f.close()
             logging_python_quest(file_name + " downloaded")
             old_dict[item].append("downloaded")
             d = open(DATA_DIR + 'gfycat_down', 'w')
             json.dump(old_dict, d)
             d.close()
+        elif len(old_dict[item]) == 5:
+            time_added = int(old_dict[item][3])
+            time_now = int(t())
+            if time_now - time_added > 172800:
+                item_list2del.append(item)
     else:
         logging_python_quest("gfycat downloaded")
+    if item_list2del:
+        f = open(DATA_DIR + 'gfycat_down', 'r')
+        data1 = json.load(f)
+        for item in item_list2del:
+            del data1[item]
+        f = open(DATA_DIR + 'gfycat_down', 'w')
+        json.dump(data1, f)
+        f.close()
+        logging_python_quest("gfycat record deleted")
+
