@@ -14,10 +14,17 @@ elif PLATFORM == "pi":
     DATA_DIR = SITE_ROOT + "Data/"
     STATIC_DIR = SITE_ROOT + "static/"
     DOWNLOAD_DIR = BASE_ROOT + "Downloads/"
+elif PLATFORM == "osx":
+    BASE_ROOT = "/Users/apple/Documents/"
+    SITE_ROOT = BASE_ROOT + "mysite_on_pi_main/"
+    SCRIPT_ROOT = BASE_ROOT + "Server_scripts/"
+    DATA_DIR = SITE_ROOT + "Data/"
+    STATIC_DIR = SITE_ROOT + "static/"
+    DOWNLOAD_DIR = SCRIPT_ROOT + "OWDown/"
 
 
 def logging_python_quest(msg):
-    if PLATFORM == "pc":
+    if PLATFORM == "pc" or PLATFORM == "osx":
         print msg
     elif PLATFORM == "pi":
         import datetime
@@ -206,4 +213,91 @@ def download_reddit_video():
         json.dump(data1, f)
         f.close()
         logging_python_quest("gfycat record deleted")
+
+
+def get_ow_reddit_hot():
+    from bs4 import BeautifulSoup
+    from urllib2 import urlopen, Request
+    import re, json, time
+    from datetime import datetime
+
+    NOW = datetime.utcnow()
+    base_url = 'https://www.reddit.com/r/Overwatch/hot/?limit=100'
+
+    hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5)AppleWebKit 537.36(KHTML, like Gecko) Chrome",
+           "Accept": "text/html,application/xhtml+xml,application/xml;q = 0.9, image / webp, * / *;q = 0.8"}
+
+    soup = BeautifulSoup(urlopen(Request(base_url, headers=hdr)), "html.parser")
+
+    high_light = soup.findAll("span", {"class": "linkflairlabel", "title": lambda s: "Highlight" in s or "Humor" in s})
+    dict2store = {}
+    for item in high_light:
+        if item.parent.find("span", {"class": "domain"}).a.get_text() != "gfycat.com":
+            continue
+        try:
+            comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
+                "class": "first"}).a.get_text().split(' ')[0])
+        except ValueError:
+            comment_n = 0
+        if not comment_n:
+            continue
+        item_time = datetime.strptime(
+            item.parent.parent.find("p", {"class": "tagline "}).time['datetime'].replace("+00:00", ''),
+            "%Y-%m-%dT%H:%M:%S")
+        dif = (NOW - item_time).days * 24 + (NOW - item_time).seconds // 3600
+        if dif > 47:
+            continue
+        if not dif:
+            dif = 1
+        if dif * 4 < comment_n:
+            title = item.parent.a.get_text()
+            anchor_to_top = item.parent.parent.parent
+            gfycat_url = anchor_to_top["data-url"]
+            item_id = anchor_to_top["id"]
+            gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
+            time_added = int(time.time())
+            dict2store.update({item_id: [title, gfycat_id, time_added]})
+
+    try:
+        d = open(DATA_DIR + 'gfycat_hl', 'r')
+        try:
+            old_dict = json.load(d)
+        except ValueError:
+            old_dict = {}
+    except IOError:
+        d = open(DATA_DIR + 'gfycat_hl', 'wb')
+        d.close()
+        old_dict = {}
+
+    for item in dict2store.keys():
+        try:
+            old_dict[item]
+        except KeyError:
+            pass
+        else:
+            del dict2store[item]
+    old_dict.update(dict2store)
+    d = open(DATA_DIR + 'gfycat_hl', 'w')
+    json.dump(old_dict, d)
+    logging_python_quest(str(dict2store) + ' added')
+    d.close()
+
+
+def update_ow_reddit_hot():
+    import json
+    from time import time as t
+    d = open(DATA_DIR + 'gfycat_hl', 'r')
+    old_dict = json.load(d)
+    time_now = int(t())
+    item2del = []
+    for item in old_dict.keys():
+        time_added = int(old_dict[item][2])
+        if time_now-time_added > 172800:
+            item2del.append(item)
+    if item2del:
+        for item in item2del:
+            del old_dict[item]
+    d = open(DATA_DIR + 'gfycat_hl', 'w')
+    json.dump(old_dict, d)
+    d.close()
 
