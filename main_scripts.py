@@ -301,3 +301,50 @@ def update_ow_reddit_hot():
     json.dump(old_dict, d)
     d.close()
 
+
+def sim_get_ow_reddit_hot():
+    from bs4 import BeautifulSoup
+    from urllib2 import urlopen, Request
+    import re, json
+    from datetime import datetime
+
+    NOW = datetime.utcnow()
+    base_url = 'https://www.reddit.com/r/Overwatch/hot/?limit=100'
+
+    hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5)AppleWebKit 537.36(KHTML, like Gecko) Chrome",
+           "Accept": "text/html,application/xhtml+xml,application/xml;q = 0.9, image / webp, * / *;q = 0.8"}
+
+    soup = BeautifulSoup(urlopen(Request(base_url, headers=hdr)), "html.parser")
+
+    high_light = soup.findAll("span", {"class": "linkflairlabel", "title": lambda s: "Highlight" in s or "Humor" in s})
+    dict2store = {}
+    for item in high_light:
+        if item.parent.find("span", {"class": "domain"}).a.get_text() != "gfycat.com":
+            continue
+        try:
+            comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
+                "class": "first"}).a.get_text().split(' ')[0])
+        except ValueError:
+            comment_n = 0
+        if not comment_n:
+            continue
+        item_time = datetime.strptime(
+            item.parent.parent.find("p", {"class": "tagline "}).time['datetime'].replace("+00:00", ''),
+            "%Y-%m-%dT%H:%M:%S")
+        dif = (NOW - item_time).days * 24 + (NOW - item_time).seconds // 3600
+        if dif > 47:
+            continue
+        if not dif:
+            dif = 1
+        if dif * 5 < comment_n:
+            title = item.parent.a.get_text()
+            anchor_to_top = item.parent.parent.parent
+            gfycat_url = anchor_to_top["data-url"]
+            item_id = anchor_to_top["id"]
+            gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
+            dict2store.update({item_id: [title, gfycat_id]})
+
+    d = open(DATA_DIR + 'gfycat_hl', 'wb')
+    json.dump(dict2store, d)
+    logging_python_quest(str(dict2store) + ' added')
+    d.close()
