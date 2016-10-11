@@ -316,8 +316,9 @@ def sim_get_ow_reddit_hot():
 
     soup = BeautifulSoup(urlopen(Request(base_url, headers=hdr)), "html.parser")
 
+    # get highlights and make them into dict_raw
     high_light = soup.findAll("span", {"class": "linkflairlabel", "title": lambda s: "Highlight" in s or "Humor" in s})
-    dict2store = {}
+    dict_raw = {}
     for item in high_light:
         if item.parent.find("span", {"class": "domain"}).a.get_text() != "gfycat.com":
             continue
@@ -336,15 +337,35 @@ def sim_get_ow_reddit_hot():
             continue
         if not dif:
             dif = 1
-        if dif * 5 < comment_n:
-            title = item.parent.a.get_text()
-            anchor_to_top = item.parent.parent.parent
-            gfycat_url = anchor_to_top["data-url"]
-            item_id = anchor_to_top["id"]
-            gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
-            dict2store.update({item_id: [title, gfycat_id]})
+        if dif * 5> comment_n:
+            continue
+        title = item.parent.a.get_text()
+        anchor_to_top = item.parent.parent.parent
+        upvotes = anchor_to_top.find('div', {'class': 'score unvoted'}).get_text().encode('utf-8')
+        try:
+            upvotes = int(upvotes)
+        except ValueError:
+            continue
+        score = comment_n * 10 + upvotes
+        gfycat_url = anchor_to_top["data-url"]
+        item_id = anchor_to_top["id"]
+        gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
+        dict_raw.update({item_id: [title, gfycat_id, score]})
 
+    # find highlights that rank top 5 and store them in dict2store
+    if len(dict_raw) > 5:
+        dict2store = {}
+        score_list = sorted([dict_raw[item][2] for item in dict_raw.keys()])[-5:]
+        for item in dict_raw.keys():
+            if not score_list:
+                break
+            elif dict_raw[item][2] in score_list:
+                dict2store.update({item:dict_raw[item]})
+                score_list.remove(dict_raw[item][2])
+    else:
+        dict2store = dict_raw
+
+    # save to gfycat_hl
     d = open(DATA_DIR + 'gfycat_hl', 'wb')
     json.dump(dict2store, d)
-    logging_python_quest(str(dict2store) + ' added')
     d.close()
