@@ -369,3 +369,38 @@ def sim_get_ow_reddit_hot():
     d = open(DATA_DIR + 'gfycat_hl', 'wb')
     json.dump(dict2store, d)
     d.close()
+
+    # get fan contents
+    high_light = soup.findAll("span", {"class": "linkflairlabel", "title": "Fan Content"})
+    dict_raw = {}
+    for item in high_light:
+        if "deviantart.com" not in item.parent.find("span", {"class": "domain"}).a.get_text():
+            continue
+        try:
+            comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
+                "class": "first"}).a.get_text().split(' ')[0])
+        except ValueError:
+            comment_n = 0
+        if not comment_n:
+            continue
+        item_time = datetime.strptime(
+            item.parent.parent.find("p", {"class": "tagline "}).time['datetime'].replace("+00:00", ''),
+            "%Y-%m-%dT%H:%M:%S")
+        dif = (NOW - item_time).days * 24 + (NOW - item_time).seconds // 3600
+        if dif > 47:
+            continue
+        if not dif:
+            dif = 1
+        if dif * 5 > comment_n:
+            continue
+        title = item.parent.a.get_text()
+        anchor_to_top = item.parent.parent.parent
+        deviantart_url = anchor_to_top["data-url"]
+        item_id = anchor_to_top["id"]
+        dict_raw.update({item_id: [title, deviantart_url]})
+
+    # save to gfycat_fa
+    if dict_raw:
+        d = open(DATA_DIR + 'gfycat_fa', 'wb')
+        json.dump(dict_raw, d)
+        d.close()
