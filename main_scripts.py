@@ -305,7 +305,7 @@ def update_ow_reddit_hot():
 def sim_get_ow_reddit_hot():
     from bs4 import BeautifulSoup
     from urllib2 import urlopen, Request
-    import re, json
+    import re, json, time
     from datetime import datetime
 
     NOW = datetime.utcnow()
@@ -371,10 +371,11 @@ def sim_get_ow_reddit_hot():
     d.close()
 
     # get fan contents
-    high_light = soup.findAll("span", {"class": "linkflairlabel", "title": "Fan Content"})
+    fan_content = soup.findAll("span", {"class": "linkflairlabel", "title": "Fan Content"})
     dict_raw = {}
-    for item in high_light:
-        if "deviantart.com" not in item.parent.find("span", {"class": "domain"}).a.get_text():
+    for item in fan_content:
+        domain_name = item.parent.find("span", {"class": "domain"}).a.get_text()
+        if "deviantart.com" not in domain_name and domain_name != "self.Overwatch":
             continue
         try:
             comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
@@ -391,13 +392,25 @@ def sim_get_ow_reddit_hot():
             continue
         if not dif:
             dif = 1
-        if dif * 5 > comment_n:
+        if dif * 3 > comment_n:
             continue
         title = item.parent.a.get_text()
         anchor_to_top = item.parent.parent.parent
-        deviantart_url = anchor_to_top["data-url"]
+        if "deviantart.com" in domain_name:
+            fa_url = anchor_to_top["data-url"]
+        elif domain_name == "self.Overwatch":
+            post_url = "https://www.reddit.com" + anchor_to_top["data-url"]
+            soup2 = BeautifulSoup(urlopen(Request(post_url, headers=hdr)), "html.parser")
+            time.sleep(5)
+            fa_a = soup2.find('div', {"data-domain": 'self.Overwatch'}).find('div', {'class': 'md'}).find('a')
+            if fa_a:
+                fa_url = fa_a['href']
+            else:
+                continue
+        else:
+            continue
         item_id = anchor_to_top["id"]
-        dict_raw.update({item_id: [title, deviantart_url]})
+        dict_raw.update({item_id: [title, fa_url]})
 
     # save to gfycat_fa
     if dict_raw:
