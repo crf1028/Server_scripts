@@ -320,7 +320,8 @@ def sim_get_ow_reddit_hot():
     high_light = soup.findAll("span", {"class": "linkflairlabel", "title": lambda s: "Highlight" in s or "Humor" in s})
     dict_raw = {}
     for item in high_light:
-        if item.parent.find("span", {"class": "domain"}).a.get_text() != "gfycat.com":
+        data_domain = item.parent.find("span", {"class": "domain"}).a.get_text()
+        if data_domain != "gfycat.com" and data_domain != "streamable.com":
             continue
         try:
             comment_n = int(item.parent.parent.find("ul", {"class": "flat-list buttons"}).find('li', {
@@ -347,10 +348,19 @@ def sim_get_ow_reddit_hot():
         except ValueError:
             continue
         score = comment_n * 10 + upvotes
-        gfycat_url = anchor_to_top["data-url"]
         item_id = anchor_to_top["id"]
-        gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
-        dict_raw.update({item_id: [title, gfycat_id, score]})
+        if data_domain == "gfycat.com":
+            gfycat_url = anchor_to_top["data-url"]
+            gfycat_id = re.findall(r'\.com/(.*)', gfycat_url)[0]
+            dict_raw.update({item_id: [title, gfycat_id, score]})
+        elif data_domain == "streamable.com":
+            streamable_url = anchor_to_top["data-url"]
+            soup2 = BeautifulSoup(urlopen(Request(streamable_url, headers=hdr)), "html.parser")
+            time.sleep(5)
+            streamable_mp4 = soup2.find('source', {'type': 'video/mp4', 'class': 'mp4-source'})['src']
+            dict_raw.update({item_id: [title, streamable_mp4, score]})
+        else:
+            continue
 
     # find highlights that rank top 5 and store them in dict2store
     if len(dict_raw) > 5:
